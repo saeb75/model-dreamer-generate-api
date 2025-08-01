@@ -725,9 +725,9 @@ class GenerateController {
           const response = await openai.images.edit({
             model: "gpt-image-1",
             image: imageFile,
-            prompt: PROMPT,
+            prompt: prompt || PROMPT,
             n: 1,
-            input_fidelity: "high",
+            input_fidelity: input_fidelity,
             size: "1024x1536",
           });
           console.log("asdasdasdasdsadsadasd");
@@ -973,7 +973,7 @@ class GenerateController {
       let {
         imageUrls = [],
         prompt,
-        input_fidelity = "high",
+        input_fidelity = "low",
         quality = "auto",
         background = "auto",
         aspect_ratio = "1:1",
@@ -1100,16 +1100,16 @@ class GenerateController {
       let filepath = path.join(process.cwd(), "uploads", filename);
       fs.writeFileSync(filepath, image_bytes);
 
-      // Send continue notification for Cloudinary upload
-      if (global.socketService) {
-        global.socketService.sendToUserRoom(userId, "continue", {
-          generationId,
-          status: "uploading",
-          message: "Uploading edited image...",
-          progress: 80,
-          inputImage: parsedImageUrls.length > 0 ? parsedImageUrls[0] : null,
-        });
-      }
+      // // Send continue notification for Cloudinary upload
+      // if (global.socketService) {
+      //   global.socketService.sendToUserRoom(userId, "continue", {
+      //     generationId,
+      //     status: "uploading",
+      //     message: "Uploading edited image...",
+      //     progress: 80,
+      //     inputImage: parsedImageUrls.length > 0 ? parsedImageUrls[0] : null,
+      //   });
+      // }
 
       const cloudinaryService = new CloudinaryService();
       let cloudinaryResult = await cloudinaryService.uploadImage(
@@ -1195,6 +1195,10 @@ class GenerateController {
         error: error.message,
         details: error.toString(),
       });
+    } finally {
+      if (statusInterval) {
+        clearInterval(statusInterval);
+      }
     }
   }
 }
