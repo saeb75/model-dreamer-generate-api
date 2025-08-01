@@ -1,0 +1,555 @@
+openapi: 3.0.3
+info:
+  title: Model Generator API
+  description: |
+    Bu API, Replicate API kullanarak GPT Image 1 modeli ile görsel üretimi yapan ve çoklu görsel kompozisyonu destekleyen bir Express.js API'sidir.
+    
+    ## Özellikler
+    - Component-Based Architecture
+    - Çoklu görsel kompozisyonu (2-3 görsel)
+    - A4 boyutunda PNG çıktı (2480x3508px)
+    - Cloudinary entegrasyonu
+    - Otomatik görsel düzenleme (1/2 veya 1/3)
+    - Kapsamlı doğrulama
+    - Hata yönetimi ve temizlik
+    
+    ## Gereksinimler
+    - Node.js 16+
+    - Replicate API Token
+    - OpenAI API Key
+    - Cloudinary hesabı ve API anahtarları
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@modelgenerator.com
+  license:
+    name: ISC
+    url: https://opensource.org/licenses/ISC
+
+servers:
+  - url: http://localhost:3000
+    description: Development server
+  - url: https://api.modelgenerator.com
+    description: Production server
+
+tags:
+  - name: Health Check
+    description: API durumu ve bilgileri
+  - name: Image Generation
+    description: Replicate ile görsel üretimi
+  - name: Image Composition
+    description: Çoklu görsel kompozisyonu ve Cloudinary entegrasyonu
+  - name: Validation
+    description: Doğrulama kuralları ve test endpoint'leri
+
+paths:
+  /:
+    get:
+      tags:
+        - Health Check
+      summary: API durumu ve bilgileri
+      description: API'nin çalışır durumda olup olmadığını kontrol eder ve mevcut endpoint'leri listeler
+      responses:
+        '200':
+          description: API başarıyla çalışıyor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Model Generator API is running"
+                  version:
+                    type: string
+                    example: "1.0.0"
+                  endpoints:
+                    type: object
+                    properties:
+                      generate:
+                        type: string
+                        example: "/api/v1/generate"
+                      generateWithImage:
+                        type: string
+                        example: "/api/v1/generate-with-image"
+                      generateWithMultipleImages:
+                        type: string
+                        example: "/api/v1/generate-with-multiple-images"
+                      validationRules:
+                        type: string
+                        example: "/api/v1/validation-rules"
+                      testCloudinary:
+                        type: string
+                        example: "/api/v1/test-cloudinary"
+
+  /api/v1/generate:
+    post:
+      tags:
+        - Image Generation
+      summary: Metin ile görsel üretimi
+      description: |
+        Sadece metin prompt'u kullanarak Replicate API ile görsel üretir.
+        
+        Bu endpoint, GPT Image 1 modelini kullanarak metin açıklamasından görsel oluşturur.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - prompt
+              properties:
+                prompt:
+                  type: string
+                  description: Görsel oluşturmak için metin açıklaması
+                  example: "Add the floral pattern to the vase"
+                quality:
+                  type: string
+                  description: Görsel kalitesi
+                  enum: [auto, standard, high]
+                  default: auto
+                  example: "auto"
+                background:
+                  type: string
+                  description: Arka plan ayarı
+                  enum: [auto, transparent, white, black]
+                  default: auto
+                  example: "auto"
+                aspect_ratio:
+                  type: string
+                  description: Görsel en-boy oranı
+                  enum: ["1:1", "16:9", "9:16", "4:3", "3:4"]
+                  default: "1:1"
+                  example: "1:1"
+                number_of_images:
+                  type: integer
+                  description: Üretilecek görsel sayısı
+                  minimum: 1
+                  maximum: 4
+                  default: 1
+                  example: 1
+      responses:
+        '200':
+          description: Görsel başarıyla üretildi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  model:
+                    type: string
+                    example: "openai/gpt-image-1:a6198aeaea27df5f3a9f11335cd61b2031729f9527cd34e6cdb4bb3ee9355b87"
+                  input:
+                    type: object
+                    description: Model'e gönderilen input parametreleri
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                          description: Görsel indeksi
+                        filename:
+                          type: string
+                          description: Kaydedilen dosya adı
+                        filepath:
+                          type: string
+                          description: Dosya yolu
+                        base64:
+                          type: string
+                          description: Base64 encoded görsel
+                        size:
+                          type: integer
+                          description: Dosya boyutu (byte)
+                        url:
+                          type: string
+                          description: Görsel URL'i (eğer varsa)
+                        type:
+                          type: string
+                          description: Görsel türü
+                        error:
+                          type: string
+                          description: Hata mesajı (eğer varsa)
+                  totalGenerated:
+                    type: integer
+                    description: Toplam üretilen görsel sayısı
+        '400':
+          description: Geçersiz istek
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Sunucu hatası
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/generate-with-multiple-images:
+    post:
+      tags:
+        - Image Composition
+      summary: Çoklu görsel kompozisyonu
+      description: |
+        2-3 görsel ile A4 kompozisyonu oluşturur ve Cloudinary'ye yükler.
+        
+        **Gereksinimler:**
+        - **2 görsel**: 1 URL + 1 yüklenen dosya
+        - **3 görsel**: 1 URL + 2 yüklenen dosya
+        
+        Görseller yatay olarak düzenlenir (1/2 veya 1/3 bölümler) ve A4 boyutunda PNG olarak çıktı alınır.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - images
+                - imageUrls
+              properties:
+                images:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Yüklenecek görsel dosyaları (max 2 dosya, her biri max 10MB)
+                  minItems: 1
+                  maxItems: 2
+                imageUrls:
+                  type: string
+                  format: text
+                  description: JSON array olarak görsel URL'leri (en az 1 URL gerekli)
+                  example: '["https://example.com/image1.jpg"]'
+                prompt:
+                  type: string
+                  description: Opsiyonel metin açıklaması (Replicate için)
+                  example: "Create a beautiful composition"
+                quality:
+                  type: string
+                  description: Görsel kalitesi
+                  enum: [auto, standard, high]
+                  default: auto
+                background:
+                  type: string
+                  description: Arka plan ayarı
+                  enum: [auto, transparent, white, black]
+                  default: auto
+                aspect_ratio:
+                  type: string
+                  description: Görsel en-boy oranı
+                  enum: ["1:1", "16:9", "9:16", "4:3", "3:4"]
+                  default: "1:1"
+      responses:
+        '200':
+          description: Kompozisyon başarıyla oluşturuldu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  composition:
+                    type: object
+                    properties:
+                      success:
+                        type: boolean
+                      cloudinaryUrl:
+                        type: string
+                        description: Cloudinary'deki görsel URL'i
+                        example: "https://res.cloudinary.com/your-cloud/image/upload/v1234567890/a4-compositions/a4_composition_1234567890.png"
+                      publicId:
+                        type: string
+                        description: Cloudinary public ID
+                        example: "a4_composition_1234567890"
+                      assetId:
+                        type: string
+                        description: Cloudinary asset ID
+                      format:
+                        type: string
+                        example: "png"
+                      size:
+                        type: integer
+                        description: Dosya boyutu (byte)
+                      composition:
+                        type: object
+                        properties:
+                          totalImages:
+                            type: integer
+                            description: Toplam görsel sayısı
+                          uploadedCount:
+                            type: integer
+                            description: Yüklenen dosya sayısı
+                          urlCount:
+                            type: integer
+                            description: URL sayısı
+                          canvasSize:
+                            type: object
+                            properties:
+                              width:
+                                type: integer
+                                example: 2480
+                              height:
+                                type: integer
+                                example: 3508
+                  replicateGeneration:
+                    type: object
+                    description: Replicate ile üretim sonucu (eğer prompt verilmişse)
+                    nullable: true
+                    properties:
+                      success:
+                        type: boolean
+                      model:
+                        type: string
+                      input:
+                        type: object
+                      output:
+                        type: object
+                      error:
+                        type: string
+                  summary:
+                    type: object
+                    properties:
+                      totalInputImages:
+                        type: integer
+                        description: Toplam giriş görsel sayısı
+                      urlCount:
+                        type: integer
+                        description: URL sayısı
+                      uploadedCount:
+                        type: integer
+                        description: Yüklenen dosya sayısı
+                      hasPrompt:
+                        type: boolean
+                        description: Prompt verilip verilmediği
+                      cloudinaryUrl:
+                        type: string
+                        description: Cloudinary URL'i
+        '400':
+          description: Geçersiz istek
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Sunucu hatası
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/generate-with-image:
+    post:
+      tags:
+        - Image Generation
+      summary: Tek görsel ile görsel üretimi (Legacy)
+      description: |
+        Mevcut bir görsel ve metin prompt'u ile görsel üretir.
+        
+        Bu endpoint, tek bir görsel dosyası yükleyerek ve metin açıklaması ekleyerek yeni görsel üretir.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - image
+                - prompt
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: Yüklenecek görsel dosyası (max 10MB)
+                prompt:
+                  type: string
+                  description: Görsel oluşturmak için metin açıklaması
+                  example: "Add floral patterns to this vase"
+                quality:
+                  type: string
+                  description: Görsel kalitesi
+                  enum: [auto, standard, high]
+                  default: auto
+                background:
+                  type: string
+                  description: Arka plan ayarı
+                  enum: [auto, transparent, white, black]
+                  default: auto
+                aspect_ratio:
+                  type: string
+                  description: Görsel en-boy oranı
+                  enum: ["1:1", "16:9", "9:16", "4:3", "3:4"]
+                  default: "1:1"
+      responses:
+        '200':
+          description: Görsel başarıyla üretildi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  model:
+                    type: string
+                    example: "openai/gpt-image-1:a6198aeaea27df5f3a9f11335cd61b2031729f9527cd34e6cdb4bb3ee9355b87"
+                  input:
+                    type: object
+                    description: Model'e gönderilen input parametreleri
+                  output:
+                    type: object
+                    description: Model çıktısı
+        '400':
+          description: Geçersiz istek
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Sunucu hatası
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/validation-rules:
+    get:
+      tags:
+        - Validation
+      summary: Doğrulama kurallarını getirir
+      description: |
+        API'nin kabul ettiği dosya türleri, boyut limitleri ve diğer doğrulama kurallarını döndürür.
+        
+        Bu endpoint, client uygulamalarının doğrulama kurallarını öğrenmesi için kullanılır.
+      responses:
+        '200':
+          description: Doğrulama kuralları başarıyla getirildi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  validationRules:
+                    type: object
+                    properties:
+                      maxFileSize:
+                        type: integer
+                        description: Maksimum dosya boyutu (byte)
+                        example: 10485760
+                      maxFileSizeMB:
+                        type: number
+                        description: Maksimum dosya boyutu (MB)
+                        example: 10
+                      allowedMimeTypes:
+                        type: array
+                        items:
+                          type: string
+                        description: İzin verilen MIME türleri
+                        example: ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"]
+                      allowedExtensions:
+                        type: array
+                        items:
+                          type: string
+                        description: İzin verilen dosya uzantıları
+                        example: [".jpg", ".jpeg", ".png", ".webp", ".gif"]
+                      minImages:
+                        type: integer
+                        description: Minimum görsel sayısı
+                        example: 2
+                      maxImages:
+                        type: integer
+                        description: Maksimum görsel sayısı
+                        example: 3
+                      requireUpload:
+                        type: boolean
+                        description: Dosya yükleme gerekliliği
+                        example: true
+                      requireUrl:
+                        type: boolean
+                        description: URL gerekliliği
+                        example: true
+        '500':
+          description: Sunucu hatası
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/test-cloudinary:
+    get:
+      tags:
+        - Validation
+      summary: Cloudinary bağlantısını test eder
+      description: |
+        Cloudinary servisine bağlantıyı test eder ve yapılandırmanın doğru olup olmadığını kontrol eder.
+        
+        Bu endpoint, Cloudinary API anahtarlarının doğru yapılandırıldığını doğrulamak için kullanılır.
+      responses:
+        '200':
+          description: Cloudinary bağlantı testi tamamlandı
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    description: Test başarılı mı
+                    example: true
+                  message:
+                    type: string
+                    description: Başarı mesajı
+                    example: "Cloudinary connection test successful"
+                  error:
+                    type: string
+                    description: Hata mesajı (eğer başarısızsa)
+                    example: "Invalid API key"
+        '500':
+          description: Sunucu hatası
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          description: Hata mesajı
+          example: "Invalid request parameters"
+        details:
+          type: string
+          description: Detaylı hata bilgisi (opsiyonel)
+          example: "TypeError: Cannot read property 'prompt' of undefined"
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API anahtarı (gelecekte kullanım için)
+
+security:
+  - ApiKeyAuth: []
+
+externalDocs:
+  description: Daha fazla bilgi için GitHub repository'sini ziyaret edin
+  url: https://github.com/your-username/model-generator 

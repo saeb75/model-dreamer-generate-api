@@ -233,6 +233,7 @@ model-generator/
 - ✅ **Otomatik görsel düzenleme** (1/2 veya 1/3)
 - ✅ **Kapsamlı doğrulama**
 - ✅ **Hata yönetimi ve temizlik**
+- ✅ **Otomatik dosya temizliği** (uploads klasöründen)
 - ✅ **CORS desteği**
 - ✅ **Dosya yükleme limitleri**
 - ✅ **Statik dosya sunumu**
@@ -246,6 +247,28 @@ model-generator/
 - **Dosya türleri**: JPG, PNG, WebP, GIF
 - **URL formatı**: HTTP/HTTPS
 
+## 🧹 Otomatik Dosya Temizliği
+
+API, kullanılan dosyaları otomatik olarak temizler:
+
+### Temizlenen Dosyalar:
+
+- **Yüklenen dosyalar**: `uploads/` klasöründeki kullanıcı dosyaları
+- **Oluşturulan dosyalar**: AI tarafından oluşturulan geçici dosyalar
+- **Düzenlenen dosyalar**: OpenAI ile düzenlenen görseller
+
+### Temizlik Zamanı:
+
+- Dosyalar işlendikten ve Cloudinary'ye yüklendikten hemen sonra
+- Hata durumlarında bile temizlik işlemi gerçekleştirilir
+- Log kayıtları ile temizlik işlemleri takip edilir
+
+### Güvenlik:
+
+- Sadece API tarafından oluşturulan dosyalar temizlenir
+- Sistem dosyalarına dokunulmaz
+- Hata durumlarında güvenli temizlik
+
 ## 🛠️ Gereksinimler
 
 - Node.js 16+
@@ -256,4 +279,5 @@ model-generator/
 ## 📝 Lisans
 
 ISC
+
 # model-dreamer-generate-api
