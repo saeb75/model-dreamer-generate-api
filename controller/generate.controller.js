@@ -584,6 +584,7 @@ class GenerateController {
         quality = "auto",
         background = "auto",
         aspect_ratio = "1:1",
+        input_fidelity = "low",
       } = req.body;
       const uploadedFiles = req.files || [];
 
