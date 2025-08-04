@@ -5,8 +5,8 @@ import path from "path";
 
 class ImageProcessor {
   constructor() {
-    this.A4_WIDTH = 3508; // A4 width in pixels at 300 DPI (landscape)
-    this.A4_HEIGHT = 2480; // A4 height in pixels at 300 DPI (landscape)
+    this.A4_WIDTH = 3508 / 4; // A4 width in pixels at 300 DPI (landscape)
+    this.A4_HEIGHT = 2480 / 4; // A4 height in pixels at 300 DPI (landscape)
   }
 
   /**
@@ -139,7 +139,10 @@ class ImageProcessor {
           console.log(`Cleaned up uploaded file: ${file.originalname}`);
         }
       } catch (error) {
-        console.warn(`Failed to cleanup uploaded file ${file.originalname}:`, error.message);
+        console.warn(
+          `Failed to cleanup uploaded file ${file.originalname}:`,
+          error.message
+        );
       }
     }
   }
@@ -158,7 +161,10 @@ class ImageProcessor {
       }
     } catch (error) {
       const logName = filename || path.basename(filepath);
-      console.warn(`Failed to cleanup uploaded file ${logName}:`, error.message);
+      console.warn(
+        `Failed to cleanup uploaded file ${logName}:`,
+        error.message
+      );
     }
   }
 }

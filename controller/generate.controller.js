@@ -29,7 +29,7 @@ class GenerateController {
     try {
       const {
         prompt,
-        quality = "auto",
+        quality = "medium",
         background = "auto",
         aspect_ratio = "1:1",
         number_of_images = 1,
@@ -45,7 +45,7 @@ class GenerateController {
       const input = {
         prompt: prompt,
         quality: quality,
-        background: background,
+        background: "opaque",
         moderation: "auto",
         aspect_ratio: aspect_ratio,
         output_format: "webp",
@@ -163,7 +163,7 @@ class GenerateController {
       let {
         imageUrls = [],
         prompt,
-        quality = "auto",
+        quality = "medium",
         background = "auto",
         aspect_ratio = "1:1",
       } = req.body;
@@ -303,7 +303,7 @@ class GenerateController {
             // }
           } else {
             // Send continue notification
-            if (global.socketService) {
+            if (global.socketService && !generationFailed) {
               global.socketService.sendToUserRoom(userId, "continue", {
                 generationId,
                 status: "ai_generation",
@@ -350,7 +350,7 @@ class GenerateController {
           };
 
           // Send generation failed notification
-          if (global.socketService) {
+          if (global.socketService && !generationFailed) {
             global.socketService.sendToUserRoom(userId, "generation_failed", {
               generationId,
               status: "failed",
@@ -386,8 +386,8 @@ class GenerateController {
       }
 
       // Clean up uploaded files after processing
-      const imageProcessor = new ImageProcessor();
-      await imageProcessor.cleanupUploadedFiles(uploadedFiles);
+      const imageProcessorCleanup = new ImageProcessor();
+      await imageProcessorCleanup.cleanupUploadedFiles(uploadedFiles);
 
       res.json({
         success: true,
@@ -430,7 +430,7 @@ class GenerateController {
     try {
       const {
         prompt,
-        quality = "auto",
+        quality = "medium",
         background = "auto",
         aspect_ratio = "1:1",
       } = req.body;
@@ -450,7 +450,7 @@ class GenerateController {
       const input = {
         prompt: prompt,
         quality: quality,
-        background: background,
+        background: "opaque",
         moderation: "auto",
         aspect_ratio: aspect_ratio,
         output_format: "webp",
@@ -581,7 +581,7 @@ class GenerateController {
       let {
         imageUrls = [],
         prompt,
-        quality = "auto",
+        quality = "medium",
         background = "auto",
         aspect_ratio = "1:1",
         input_fidelity = "low",
@@ -591,7 +591,7 @@ class GenerateController {
       // Function to send periodic status updates
       const sendPeriodicUpdates = (userId, generationId, inputImage) => {
         const interval = setInterval(() => {
-          if (global.socketService) {
+          if (global.socketService && !generationFailed) {
             global.socketService.sendToUserRoom(userId, "continue", {
               generationId,
               status: "processing",
@@ -696,7 +696,7 @@ class GenerateController {
       if (prompt) {
         try {
           // Send continue notification
-          if (global.socketService) {
+          if (global.socketService && !generationFailed) {
             global.socketService.sendToUserRoom(userId, "continue", {
               generationId,
               status: "openai_editing",
@@ -727,6 +727,7 @@ class GenerateController {
             model: "gpt-image-1",
             image: imageFile,
             prompt: prompt || PROMPT,
+            quality: quality,
             n: 1,
             input_fidelity: input_fidelity,
             size: "1024x1536",
@@ -766,7 +767,7 @@ class GenerateController {
           };
 
           // Send continue notification
-          if (global.socketService) {
+          if (global.socketService && !generationFailed) {
             global.socketService.sendToUserRoom(userId, "continue", {
               generationId,
               status: "openai_editing_completed",
@@ -783,7 +784,7 @@ class GenerateController {
               const replicateService = new ReplicateService();
 
               // Send face swap started notification
-              if (global.socketService) {
+              if (global.socketService && !generationFailed) {
                 global.socketService.sendToUserRoom(userId, "continue", {
                   generationId,
                   status: "face_swap",
@@ -814,7 +815,7 @@ class GenerateController {
               };
 
               // Send face swap completed notification
-              if (global.socketService) {
+              if (global.socketService && !generationFailed) {
                 global.socketService.sendToUserRoom(userId, "continue", {
                   generationId,
                   status: "face_swap_completed",
@@ -837,7 +838,7 @@ class GenerateController {
               };
 
               // Send face swap failed notification
-              if (global.socketService) {
+              if (global.socketService && !generationFailed) {
                 global.socketService.sendToUserRoom(userId, "continue", {
                   generationId,
                   status: "face_swap_failed",
@@ -862,7 +863,7 @@ class GenerateController {
             clearInterval(statusInterval);
           }
 
-          if (global.socketService) {
+          if (global.socketService && !generationFailed) {
             global.socketService.sendToUserRoom(userId, "generation_failed", {
               generationId,
               status: "failed",
@@ -904,8 +905,8 @@ class GenerateController {
       }
 
       // Clean up uploaded files after processing
-      const imageProcessor = new ImageProcessor();
-      await imageProcessor.cleanupUploadedFiles(uploadedFiles);
+      const imageProcessorCleanup = new ImageProcessor();
+      await imageProcessorCleanup.cleanupUploadedFiles(uploadedFiles);
 
       res.json({
         success: true,
@@ -923,6 +924,8 @@ class GenerateController {
       });
     } catch (error) {
       console.error("Error in editImageWithOpenAI:", error);
+      // Set failure flag to stop periodic updates immediately
+      generationFailed = true;
 
       // Clear periodic updates and send error notification
       if (statusInterval) {
@@ -954,6 +957,7 @@ class GenerateController {
 
   static async editImagesWithOpenAI(req, res) {
     let statusInterval = null;
+    let generationFailed = false;
     try {
       // Validation: Check if user is authenticated
       if (!req.user || !req.user.id) {
@@ -975,7 +979,7 @@ class GenerateController {
         imageUrls = [],
         prompt,
         input_fidelity = "low",
-        quality = "auto",
+        quality = "medium",
         background = "auto",
         aspect_ratio = "1:1",
       } = req.body;
@@ -1025,7 +1029,7 @@ class GenerateController {
       // Periodic updates function
       const sendPeriodicUpdates = (userId, generationId, inputImage) => {
         const interval = setInterval(() => {
-          if (global.socketService) {
+          if (global.socketService && !generationFailed) {
             global.socketService.sendToUserRoom(userId, "continue", {
               generationId,
               status: "processing",
@@ -1090,9 +1094,10 @@ class GenerateController {
         image: images,
         prompt: prompt || PROMPT,
         input_fidelity: input_fidelity,
+        quality: quality,
         size: "1024x1536",
         // quality: quality,
-        // background: background,
+        background: "opaque",
         // aspect_ratio: aspect_ratio,
       });
       let image_base64 = response.data[0].b64_json;
@@ -1146,8 +1151,8 @@ class GenerateController {
       });
 
       // Clean up uploaded files after processing
-      const imageProcessor = new ImageProcessor();
-      await imageProcessor.cleanupUploadedFiles(uploadedFiles);
+      const imageProcessorCleanup = new ImageProcessor();
+      await imageProcessorCleanup.cleanupUploadedFiles(uploadedFiles);
 
       // Update user credit
       await GenerateController.updateUserCredit(
@@ -1163,13 +1168,274 @@ class GenerateController {
         cloudinaryResult,
         usage: response.usage,
         summary: {
-          totalInputImages: images.length,
+          totalInputImages: allImageBuffers.length,
           urlCount: parsedImageUrls.length,
           uploadedCount: uploadedFiles.length,
           hasPrompt: !!prompt,
         },
       });
     } catch (error) {
+      // Set failure flag to stop periodic updates immediately
+      generationFailed = true;
+
+      if (statusInterval) {
+        clearInterval(statusInterval);
+      }
+
+      // Clear periodic updates and send error notification
+
+      if (global.socketService && req.user) {
+        const errorGenerationId = `edit_images_${Date.now()}`;
+        const generationId = req.body.generationId || errorGenerationId;
+
+        global.socketService.sendToUserRoom(req.user.id, "generation_failed", {
+          generationId,
+          status: "failed",
+          error: error.message,
+          message: "Image editing failed!",
+          inputImage: req.body.imageUrls
+            ? JSON.parse(req.body.imageUrls)[0]
+            : null,
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        error: error.message,
+        details: error.toString(),
+      });
+    } finally {
+      if (statusInterval) {
+        clearInterval(statusInterval);
+      }
+    }
+  }
+  static async editImagesWithOpenAIOneImage(req, res) {
+    let statusInterval = null;
+    let generationFailed = false;
+    try {
+      // Validation: Check if user is authenticated
+      if (!req.user || !req.user.id) {
+        return res.status(401).json({
+          success: false,
+          error: "Authentication required",
+        });
+      }
+
+      // Validation: Check user credit
+      if (req.user.imageCredit <= 0) {
+        return res.status(402).json({
+          success: false,
+          error: "Insufficient image credit",
+        });
+      }
+
+      let {
+        imageUrls = [],
+        prompt,
+        input_fidelity = "low",
+        quality = "medium",
+        background = "auto",
+        aspect_ratio = "1:1",
+      } = req.body;
+      const uploadedFiles = req.files || [];
+
+      // Validation: Parse and validate imageUrls
+      let parsedImageUrls = imageUrls;
+      if (typeof imageUrls === "string") {
+        try {
+          parsedImageUrls = JSON.parse(imageUrls);
+        } catch (parseError) {
+          console.error("Error parsing imageUrls:", parseError);
+          return res.status(400).json({
+            success: false,
+            error: "Invalid imageUrls format. Expected JSON array.",
+          });
+        }
+      }
+
+      // Validation: Check if we have at least one image source
+      if (
+        (!Array.isArray(parsedImageUrls) || parsedImageUrls.length === 0) &&
+        (!Array.isArray(uploadedFiles) || uploadedFiles.length === 0)
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "At least one image (URL or uploaded file) is required",
+        });
+      }
+
+      // Generate unique generation ID
+      const generationId = `edit_images_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
+      const userId = req.user.id;
+
+      // Send generation started notification
+      if (global.socketService) {
+        global.socketService.sendToUserRoom(userId, "generation_started", {
+          generationId,
+          status: "started",
+          message: "Image editing started...",
+          inputImage: parsedImageUrls.length > 0 ? parsedImageUrls[0] : null,
+        });
+      }
+
+      // Periodic updates function
+      const sendPeriodicUpdates = (userId, generationId, inputImage) => {
+        const interval = setInterval(() => {
+          if (global.socketService && !generationFailed) {
+            global.socketService.sendToUserRoom(userId, "continue", {
+              generationId,
+              status: "processing",
+              message: "Image editing in progress...",
+              timestamp: new Date().toISOString(),
+              inputImage,
+            });
+          }
+        }, 2000); // Send every 2 seconds
+        return interval;
+      };
+
+      // Start periodic status updates
+      const statusInterval = sendPeriodicUpdates(
+        userId,
+        generationId,
+        parsedImageUrls.length > 0 ? parsedImageUrls[0] : null
+      );
+
+      // Convert uploaded files to buffers
+      const uploadedBuffers = uploadedFiles.map((file) =>
+        fs.readFileSync(file.path)
+      );
+
+      // Convert image URLs to buffers
+      const urlBuffers = await Promise.all(
+        parsedImageUrls.map(async (url) => {
+          const response = await axios.get(url, {
+            responseType: "arraybuffer",
+          });
+          return Buffer.from(response.data);
+        })
+      );
+
+      // Combine all image buffers
+      const allImageBuffers = [...uploadedBuffers, ...urlBuffers];
+      console.log("111=>90");
+      // Create combined image using ImageProcessor
+      const imageComposer = new ImageProcessor();
+      const combinedImageBuffer = await imageComposer.createA4Canvas(
+        allImageBuffers
+      );
+
+      // Convert combined image to OpenAI format
+      const { toFile } = await import("openai");
+      const combinedImage = await toFile(combinedImageBuffer, null, {
+        type: "image/png",
+      });
+      console.log("111=>4");
+      // Send continue notification for OpenAI processing
+      if (global.socketService) {
+        global.socketService.sendToUserRoom(userId, "continue", {
+          generationId,
+          status: "openai_processing",
+          message: "Processing combined image with OpenAI...",
+          progress: 60,
+          inputImage: parsedImageUrls.length > 0 ? parsedImageUrls[0] : null,
+        });
+      }
+      console.log("111=>1");
+      const response = await openai.images.edit({
+        model: "gpt-image-1",
+        image: combinedImage,
+        prompt: prompt || PROMPT,
+        quality: quality,
+        input_fidelity: input_fidelity,
+        size: "1024x1536",
+        // quality: quality,
+        background: "opaque",
+        // aspect_ratio: aspect_ratio,
+      });
+      console.log("111=>2");
+      let image_base64 = response.data[0].b64_json;
+      let image_bytes = Buffer.from(image_base64, "base64");
+      let filename = `edited_image_${Date.now()}.png`;
+      let filepath = path.join(process.cwd(), "uploads", filename);
+      fs.writeFileSync(filepath, image_bytes);
+
+      // // Send continue notification for Cloudinary upload
+      // if (global.socketService) {
+      //   global.socketService.sendToUserRoom(userId, "continue", {
+      //     generationId,
+      //     status: "uploading",
+      //     message: "Uploading edited image...",
+      //     progress: 80,
+      //     inputImage: parsedImageUrls.length > 0 ? parsedImageUrls[0] : null,
+      //   });
+      // }
+
+      const cloudinaryService = new CloudinaryService();
+      let cloudinaryResult = await cloudinaryService.uploadImage(
+        filepath,
+        "openai-edits",
+        `edited_image_${Date.now()}`
+      );
+
+      // Clean up the local file after uploading to Cloudinary
+      const imageProcessorForCleanup2 = new ImageProcessor();
+      await imageProcessorForCleanup2.cleanupUploadedFile(filepath, filename);
+
+      // Clear periodic updates and send final completion notification
+      if (statusInterval) {
+        clearInterval(statusInterval);
+      }
+
+      if (global.socketService) {
+        global.socketService.sendToUserRoom(userId, "generation_completed", {
+          generationId,
+          status: "completed",
+          editedImageUrl: cloudinaryResult.url,
+          faceSwapUrl: cloudinaryResult.url,
+          credit: req.user.imageCredit - 1,
+          message: "Image editing completed successfully!",
+          inputImage: parsedImageUrls.length > 0 ? parsedImageUrls[0] : null,
+        });
+      }
+      await GenerateController.createGenerationWithUserId(req.user.id, {
+        input_url: cloudinaryResult.url,
+        output_url: cloudinaryResult.url,
+        swaped_url: cloudinaryResult.url,
+      });
+
+      // Clean up uploaded files after processing
+      const imageProcessorCleanup = new ImageProcessor();
+      await imageProcessorCleanup.cleanupUploadedFiles(uploadedFiles);
+
+      // Update user credit
+      await GenerateController.updateUserCredit(
+        userId,
+        req.user.imageCredit - 1
+      );
+
+      return res.json({
+        success: true,
+        generationId,
+        editedImageUrl: cloudinaryResult.url,
+        swaped_url: cloudinaryResult.url,
+        cloudinaryResult,
+        usage: response.usage,
+        summary: {
+          totalInputImages: allImageBuffers.length,
+          urlCount: parsedImageUrls.length,
+          uploadedCount: uploadedFiles.length,
+          hasPrompt: !!prompt,
+        },
+      });
+    } catch (error) {
+      console.error("Error in editImagesWithOpenAIOneImage:", error);
+      // Set failure flag to stop periodic updates immediately
+      generationFailed = true;
+
       if (statusInterval) {
         clearInterval(statusInterval);
       }

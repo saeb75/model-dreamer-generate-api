@@ -75,4 +75,12 @@ router.post(
   GenerateController.editImagesWithOpenAI
 );
 
+// Combined images OpenAI editing route (combines multiple images into one before editing)
+router.post(
+  "/combine",
+  authMiddleware,
+  upload.array("images", 5), // Allow up to 5 images
+  GenerateController.editImagesWithOpenAIOneImage
+);
+
 export default router;
