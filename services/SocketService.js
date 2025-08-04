@@ -13,7 +13,7 @@ class SocketService {
   initialize(server) {
     this.io = new Server(server, {
       cors: {
-        origin: process.env.FRONTEND_URL || "http://localhost:3000",
+        origin: "*",
         methods: ["GET", "POST"],
         credentials: true,
       },
