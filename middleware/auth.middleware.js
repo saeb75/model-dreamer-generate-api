@@ -9,7 +9,15 @@ export const authMiddleware = async (req, res, next) => {
     console.log(process.env.JWT_SECRET);
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     console.log({ decoded });
-    req.user = await getUser(decoded.id);
+    let user = await getUser(decoded.id);
+
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    if (user.credit < 1) {
+      return res.status(403).json({ message: "Insufficient credit" });
+    }
+    req.user = user;
 
     next();
   } catch (error) {

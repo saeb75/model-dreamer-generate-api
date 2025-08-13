@@ -17,6 +17,11 @@ const PROMPT = `Dress the AI fashion model in the exact top and bottom garments 
 
 The model’s face, expression, hair, pose, body position, and background must remain completely unchanged. Apply the outfit seamlessly, so it looks like she was originally photographed wearing it. Ensure the result is extremely photorealistic and natural.`;
 
+const PROMPT_CONVERT_IMAGE_TO_MODEL = `
+Replace background with a clean, solid-color studio setting. Keep the person and their clothes exactly as in the original image, preserving every fabric texture, fold, accessory, and color detail. Do not alter the outfit, pose, or lighting on the subject. Just change the background to a uniform studio backdrop (light gray or white). Professional fashion photography style.
+
+`;
+
 dotenv.config();
 
 const replicate = new Replicate({
@@ -1427,6 +1432,228 @@ class GenerateController {
         summary: {
           totalInputImages: allImageBuffers.length,
           urlCount: parsedImageUrls.length,
+          uploadedCount: uploadedFiles.length,
+          hasPrompt: !!prompt,
+        },
+      });
+    } catch (error) {
+      console.error("Error in editImagesWithOpenAIOneImage:", error);
+      // Set failure flag to stop periodic updates immediately
+      generationFailed = true;
+
+      if (statusInterval) {
+        clearInterval(statusInterval);
+      }
+
+      // Clear periodic updates and send error notification
+
+      if (global.socketService && req.user) {
+        const errorGenerationId = `edit_images_${Date.now()}`;
+        const generationId = req.body.generationId || errorGenerationId;
+
+        global.socketService.sendToUserRoom(req.user.id, "generation_failed", {
+          generationId,
+          status: "failed",
+          error: error.message,
+          message: "Image editing failed!",
+          inputImage: req.body.imageUrls
+            ? JSON.parse(req.body.imageUrls)[0]
+            : null,
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        error: error.message,
+        details: error.toString(),
+      });
+    } finally {
+      if (statusInterval) {
+        clearInterval(statusInterval);
+      }
+    }
+  }
+  static async convertImageToModel(req, res) {
+    let statusInterval = null;
+    let generationFailed = false;
+    try {
+      // Validation: Check if user is authenticated
+      if (!req.user || !req.user.id) {
+        return res.status(401).json({
+          success: false,
+          error: "Authentication required",
+        });
+      }
+
+      // Validation: Check user credit
+      if (req.user.imageCredit <= 0) {
+        return res.status(402).json({
+          success: false,
+          error: "Insufficient image credit",
+        });
+      }
+
+      let {
+        imageUrls = [],
+        swap_image_url,
+        prompt,
+        input_fidelity = "low",
+        quality = "medium",
+        background = "auto",
+        aspect_ratio = "1:1",
+      } = req.body;
+      const uploadedFiles = req.files || [];
+
+      const generationId = `edit_images_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
+      const userId = req.user.id;
+
+      // Send generation started notification
+      if (global.socketService) {
+        global.socketService.sendToUserRoom(userId, "generation_started", {
+          generationId,
+          status: "started",
+          message: "Image editing started...",
+          // inputImage: parsedImageUrls.length > 0 ? parsedImageUrls[0] : null,
+        });
+      }
+
+      // Periodic updates function
+      const sendPeriodicUpdates = (userId, generationId, inputImage) => {
+        const interval = setInterval(() => {
+          if (global.socketService && !generationFailed) {
+            global.socketService.sendToUserRoom(userId, "continue", {
+              generationId,
+              status: "processing",
+              message: "Image editing in progress...",
+              timestamp: new Date().toISOString(),
+              inputImage,
+            });
+          }
+        }, 2000); // Send every 2 seconds
+        return interval;
+      };
+
+      // Start periodic status updates
+      const statusInterval = sendPeriodicUpdates(
+        userId,
+        generationId,
+        " parsedImageUrls.length > 0 ? parsedImageUrls[0] : null"
+      );
+
+      const uploadedBuffers = uploadedFiles.map((file) =>
+        fs.readFileSync(file.path)
+      );
+
+      const allImageBuffers = [...uploadedBuffers];
+      console.log("111=>90");
+
+      const imageComposer = new ImageProcessor();
+      const combinedImageBuffer = await imageComposer.createA4Canvas(
+        allImageBuffers
+      );
+
+      // Convert combined image to OpenAI format
+      const { toFile } = await import("openai");
+      const combinedImage = await toFile(combinedImageBuffer, null, {
+        type: "image/png",
+      });
+      console.log("111=>4");
+      // Send continue notification for OpenAI processing
+      if (global.socketService) {
+        global.socketService.sendToUserRoom(userId, "continue", {
+          generationId,
+          status: "openai_processing",
+          message: "Processing combined image with OpenAI...",
+          progress: 60,
+          inputImage: "Convert Image to Model",
+        });
+      }
+
+      const response = await openai.images.edit({
+        model: "gpt-image-1",
+        image: combinedImage,
+        prompt: PROMPT_CONVERT_IMAGE_TO_MODEL,
+        quality: quality,
+        input_fidelity: "high",
+        size: "1024x1536",
+        // quality: quality,
+        background: "opaque",
+        // aspect_ratio: aspect_ratio,
+      });
+
+      let image_base64 = response.data[0].b64_json;
+      let image_bytes = Buffer.from(image_base64, "base64");
+      let filename = `edited_image_${Date.now()}.png`;
+      let filepath = path.join(process.cwd(), "uploads", filename);
+      fs.writeFileSync(filepath, image_bytes);
+
+      const cloudinaryService = new CloudinaryService();
+      let cloudinaryResult = await cloudinaryService.uploadImage(
+        filepath,
+        "openai-edits",
+        `edited_image_${Date.now()}`
+      );
+      let swapImageResult = null;
+      if (swap_image_url) {
+        try {
+          let swapImage = new ReplicateService();
+          swapImageResult = await swapImage.faceSwap(
+            swap_image_url,
+            cloudinaryResult.url
+          );
+        } catch (error) {
+          console.error("Error in faceSwap:", error);
+        }
+      }
+
+      // Clean up the local file after uploading to Cloudinary
+      const imageProcessorForCleanup2 = new ImageProcessor();
+      await imageProcessorForCleanup2.cleanupUploadedFile(filepath, filename);
+
+      // Clear periodic updates and send final completion notification
+      if (statusInterval) {
+        clearInterval(statusInterval);
+      }
+
+      if (global.socketService) {
+        global.socketService.sendToUserRoom(userId, "generation_completed", {
+          generationId,
+          status: "completed",
+          editedImageUrl: cloudinaryResult.url,
+          faceSwapUrl: swapImageResult,
+          credit: req.user.imageCredit - 1,
+          message: "Image editing completed successfully!",
+          inputImage: "Convert Image to Model",
+        });
+      }
+      await GenerateController.createGenerationWithUserId(req.user.id, {
+        input_url: cloudinaryResult.url,
+        output_url: cloudinaryResult.url,
+        swaped_url: cloudinaryResult.url,
+      });
+
+      // Clean up uploaded files after processing
+      const imageProcessorCleanup = new ImageProcessor();
+      await imageProcessorCleanup.cleanupUploadedFiles(uploadedFiles);
+
+      // Update user credit
+      await GenerateController.updateUserCredit(
+        userId,
+        req.user.imageCredit - 1
+      );
+
+      return res.json({
+        success: true,
+        generationId,
+        editedImageUrl: cloudinaryResult.url,
+        swaped_url: swapImageResult,
+        cloudinaryResult,
+        usage: response.usage,
+        summary: {
+          totalInputImages: allImageBuffers.length,
+          // urlCount: parsedImageUrls.length,
           uploadedCount: uploadedFiles.length,
           hasPrompt: !!prompt,
         },

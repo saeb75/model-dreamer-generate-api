@@ -3,6 +3,7 @@ import multer from "multer";
 import path from "path";
 import GenerateController from "../controller/generate.controller.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
+import TryOnController from "../controller/tryon.controller.js";
 
 const router = express.Router();
 
@@ -81,6 +82,20 @@ router.post(
   authMiddleware,
   upload.array("images", 5), // Allow up to 5 images
   GenerateController.editImagesWithOpenAIOneImage
+);
+
+// Convert image to 3D model route
+router.post(
+  "/convert",
+  authMiddleware,
+  upload.array("images", 5), // Allow up to 5 images
+  GenerateController.convertImageToModel
+);
+router.post(
+  "/try-on",
+  authMiddleware,
+  upload.array("images", 5),
+  TryOnController.generate
 );
 
 export default router;

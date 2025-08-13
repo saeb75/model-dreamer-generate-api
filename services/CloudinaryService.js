@@ -142,18 +142,20 @@ class CloudinaryService {
   async uploadFromUrl(imageUrl, folder = "model-generator", publicId = null) {
     try {
       console.log(`Downloading image from: ${imageUrl}`);
-      
+
       const response = await fetch(imageUrl);
       if (!response.ok) {
-        throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
+        throw new Error(
+          `Failed to download image: ${response.status} ${response.statusText}`
+        );
       }
-      
+
       const buffer = await response.buffer();
       console.log(`Downloaded image size: ${buffer.length} bytes`);
-      
+
       // Upload buffer to Cloudinary
       const result = await this.uploadBuffer(buffer, folder, publicId);
-      
+
       console.log(`Successfully uploaded to Cloudinary: ${result.url}`);
       return result;
     } catch (error) {
